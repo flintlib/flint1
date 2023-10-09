@@ -1,0 +1,435 @@
+/*============================================================================
+
+    This file is part of FLINT.
+
+    FLINT is free software; you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation; either version 2 of the License, or
+    (at your option) any later version.
+
+    FLINT is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with FLINT; if not, write to the Free Software
+    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301 USA
+
+===============================================================================*/
+
+=== general stuff ===
+
+ * try GREDC algorithm
+  
+ * we should be checking somewhere (at build time?) that FLINT_BITS
+   really is the same as GMP's bits per limb
+
+ * cache hints:
+    * add some documentation for cache hint macros in flint.h
+    * instead of having loops like 
+             for (j = 0; j < x->n; j += 8) FLINT_PREFETCH(x->coeffs[i+8], j);
+      everywhere, can't we have a FLINT_BLOCK_PREFETCH macro?
+ 
+ * determine cache size at build time, instead of #defined in flint.h!!!!
+     * possibly determine size of each cache in hierarchy?
+ 
+ * Collect together timing statistics on various programs (MAGMA, NTL, PARI,
+FLINT, etc), in one convenient place. (David)
+
+ * Write an asymptotically fast GCD algorithm for the Z package for very
+large integers. (First check how far along the GMP implementation is, and
+compare it speedwise to MAGMA (which presumably is very fast :-) )
+
+ * follow up issue related to arithmetic right shifts --- see NTL's #define for 
+   this. Add test code to the build process to check for this.
+
+ * write threadsafe limb allocator 
+
+=== fft ===
+
+* GMP has a cool idea for doing very long butterflies. Instead of doing
+a call to mpn_add_n and mpn_sub_n separately, it works in chunks to ensure
+everything is done in cache. This will only make a difference when the
+coefficients are so large they don't even fit in L1 any more. To do this
+*properly* it would need to work for rotations as well.
+
+* Is there a way to do reduce_mod_p_exact with one pass over the data in the
+worst case? (Currently the worst case is two passes.)
+
+* study the the overflow bit guarantees more carefully in the
+  inverse transform. The cross butterflies seem to add a factor of 3 rather
+  than 2 to the errors. Currently we are being too conservative in doing
+  fast reductions; we could get away with fewer, but would need to do a
+  safety reduction pass over the data after a certain number of layers.
+
+* maybe it's not optimal to store the coefficients n+1 limbs apart. Bill
+mentioned some potential cache-thrashing issues on intels. Might be better
+to add a bit of padding.
+
+=== fmpz_poly module ===
+
+* for KS, try the idea where we evaluate X1 = f(2^n)g(2^n), X2 = f(-2^n)g(-2^n) 
+  and then reconstruct output from X1+X2 and X1-X2
+
+* It seems a little nuts to be using ZmodF_poly with a single coefficient
+  in _fmpz_poly_mul_KS(). There's something wrong with the code structure here.
+  The bitpacking etc routines need to be abstracted differently or something.
+  -- david
+
+* we should change the name of ABS() in fmpz_poly. This will certainly interfere
+  with someone else's namespace one day. -- david
+
+=== modpmul module (branch) ===
+
+* try writing assembly version of mul_redc. Maybe the three multiplications
+can be pipelined. Also, it might be possible to write a version which does
+two independent multiplications in parallel, and gets some pipelining
+happening that way. But that would require rewriting FFTs to take advantage
+of it.
+
+* consider writing a radix-4 or split-radix FFT. I don't understand these too
+well, but it seems like these only give a speedup on "complex" data. There
+was a paper Bill mentioned that simulates a "complex" FFT by working over
+GF(p^2), so perhaps this could be used.
+
+* see whether doing two FFT's at once saves time on computing roots of unity
+and whether the multiplications being data independent might allow them to be
+interleaved and thus overlapped due to pipelining on the Opteron.
+
+* try to speed up basecase matrix transposition code
+
+* examine NTL's modmuls more carefully. Benchmark just the modmuls by
+themselves.
+
+* think about the ordering of loops in each stage of the outer fft routine.
+Sometimes might be slightly better to start at the end and work backwards
+to improve locality.
+
+
+=== ZmodF module ===
+
+* in revision 507, I rewrote ZmodF_mul_2exp(). For long coefficients the new
+  version should be more efficient, since it does fewer passes over the data
+  on average. But this needs to be checked. Moreover it's quite possible the
+  new version is slower for small coefficients, which also needs to be
+  investigated.
+
+
+=== ZmodF_poly module ===
+
+* reorganise code to permit doing pointwise mults + inner FFTs + inner IFFTs 
+  with better locality
+
+
+=== ZmodF_mul module ===
+
+* for squaring, we don't need to allocate so much memory  
+
+=== Quadratic Sieve ===
+
+* Check for instances where there is p-a mod p not reduced to zero when a = 0 in tinyQS
+
+* p^2 inverse in 32 bit mode in sieve (line 271 mp_poly.c)
+
+* Use smaller sieve sizes
+
+* Thresholds, sieve_size, firstprime, use faster modmul at appropriate point, do sqrt(n) computation in floating point, sievemask, error_amounts (currently 13) in evaluate candidate. 
+
+* deal with case where n is only one limb not two.
+
+* Try a buffered solution for the merged relation storage
+
+* Move matrix routines such as copy_col, etc, from block_lanczos.h to linear_algebra.h
+
+* Buffer relation array and Y_arr in case there are lots of duplicate relations. Currently it is just set to twice the number of relations sought.
+
+* Use precomputed inverses in expmods in sqrt code.
+
+* Write readme file for qsieve
+
+* Make ctrl-c delete temporary large prime files
+
+* Make combine_large_primes return a factor if found
+
+* In trial factoring stage don't do a mod p when the value is < p
+
+* Fix round function on 32 bit machine in mpQS (and possibly tinyQS)
+
+* limbs+2 instead of limbs+1 on 32 bit machine in mpQS
+
+=== Miscellaneous ===
+
+* Write new faster bitpacking routines - see branch (include support for 32 
+  bit machines)
+
+* change FLINT_LG_BITS_PER_LIMB to FLINT_LG_BITS, same for BYTES, etc
+
+* use mpn_random2 in more places instead of mpz_randombb, in fact come up 
+  with some FLINT wide macros perhaps
+
+* Add documents found by Tomasz to FLINT website
+
+* Add basic non-truncated non-cache friendly FFT and convolution.
+
+* Add hard coded small FFT's, etc.
+
+* Add fpLLL, GMP-ECM, mpfr, gf2x
+
+* Optimise fmpz_poly addition, since it is slower than the mpz_poly version 
+  and used by a *lot*
+
+* Implement odd/even karatsuba
+
+* Make multiplication shift when there are trailing zeroes
+
+* Make powering shift when there are trailing zeroes
+
+* Make division code use Newton division when monic B and tune the crossover 
+  to Newton division in the other cases
+
+* Clean up code for classical poly division
+
+* Make integer multiplication tuning code switch to making things divisible by 3 only when 3-way has a chance of being faster
+
+* Clean up recursive poly multiplication code
+
+* Add poly GCD
+
+* Retune almost everything and factor out tuning constants (including the one 
+  in flint.h)
+
+* Optimise division functions for small coefficients (precomputed inverses?) 
+  and particularly for monic B
+
+* Implement Graeffe and Kung's tricks
+
+* Implement David's KS trick
+
+* Implement Mulders' short product
+
+* Make F_mpz_mul deal with powers of 2 factors
+
+* Make QS polynomial selection work for very small factorisations
+
+* Write code to time all manner of basic things such as modmuls, in and out 
+  of cache memory acccesses etc
+
+* Add stack based memory management back into recursive division functions 
+  where this improves performance, but do it neatly and safely perhaps using 
+  some macros
+
+* Clean up fmpz_poly by putting as much as possible into fmpz
+
+* Do lots more profiling and put it on the website
+
+* Clean up fmpz_poly test code, making much more of it readable with extensive 
+  use of macros. Remove stack based memory management.
+
+* Write aliasing test code for series division
+
+* Implement REDC
+
+* Implement a small prime FFT
+
+* Implement middle product for series division
+
+* Reimplement splitting
+
+* Comment code
+
+* Implement algorithms for exact division and exact scalar division
+
+* Implement recursive algorithm to check if polynomial is divisible by another
+
+* Implement Karatsuba and classical squaring algorithms
+
+* Implement power series module
+
+* Hash tables for QS
+
+* Get tinyQS working properly
+
+* Save making a copy in fmpz_div_2exp
+
+* Make documentation point out where aliasing shouldn't occur in division functions and in fmpz
+
+* Implement polynomial evaluation
+
+* Implement polynomial derivative
+
+* Implement polynomial composition
+
+* Implement polynomial remainder and pseudo remainder
+
+* Implement polynomial translation f(x+t)
+
+* Implement polynomial is_zero and is_one
+
+* Support in place polynomial negation
+
+* In zmod_poly make truncate in place always in line with fmpz_poly
+
+* In zmod_poly make set_coeff set_coeff_ui in line with fmpz_poly
+
+* In fmpz_poly_div_series and zmod_poly_div_series, allow A and B to be aliased
+
+* In fmpz_poly_div_series and zmod_poly_div_series, deal with special case where the numerator is the series 1 by calling 
+  newton_invert
+
+* In fmpz_poly_div_newton the special case doesn't need to set a coefficient to zero then normalise
+
+* Have zmod_poly_divrem_newton switch out to divrem_divconquer for small lengths
+
+* Write test functions for long_extras gcd functions
+
+* Decide if zmod_poly gcd functions should return 1 if polys are coprime, or just return any unit. 
+  Decide if the gcd ought to be monic.
+
+* Speed up CRT by checking if any new coefficients have more limbs than the old coefficient and only 
+  doing the full equality comparison if not. Also get rid of the allocation of scratch space in the
+  fmpz_CRT_precomp routines.
+
+* Add FFT caching to newton inversion functions
+
+* Try unrolling loops in mpn_extras, but beware compiler flags may already make this happen.
+
+* Check that aliasing checks both poly1 == poly2 and poly1->length == poly2->length for unmanaged functions, 
+  but only the former for managed functions.
+
+* Make the functions which read a polynomial from a string, set the size of the coefficients before reading in).
+
+* Write a z_div_precomp function
+
+* Fix RUN_TEST in test-support.h so that timing works on machines without cycle counter
+
+* deal with zeroing better and truncate inputs in __fmpz_poly_mul_karatrunc_recursive
+
+* classical multiplication routine for sparse polynomials
+
+* transition from one to two limbs and back in _fmpz_poly_mul_KS may not be optimal
+
+* make profile targets work from command line
+
+* build patches Michael mentioned
+
+* factor out some of the common contents of the multiplication and precomputed multiplication functions
+
+* make greater use of FLINT_ASSERTS and test to see they work
+
+* add dirty mode to memory manager, which dirties up the limbs when allocated
+
+* switch to alloc and alloc_limbs instead of alloc and alloc_bytes
+
+* use ulong macro throughout
+
+* new memory managed 64 integer block fmpz type
+
+* incorporate the GMP memory manager
+
+* shifted polynomial addition/subtraction
+
+* polynomial addmul, polynomial scalar addmul/submul
+
+* Code exact polynomial division by starting at both ends of the problem. Look at Krandick's high order division algorithm and the paper downloaded on the Karatsuba like division algorithm.
+
+* faster isdivisible for polynomials
+
+* speed up z_jacobi by using quadratic reciprocity
+
+* speed up z_sqrtmod by using expmod (see wikipedia)
+
+* see if long_invert can be made to work with 64 bit n
+
+* optimise z_issquare once z_intsqrt is sped up
+
+* Use fast return in "step 4" of SQUFOF
+
+* Make SQUFOF factor up to 64 bit numbers on a 32 bit machine.
+
+* Allow number of trials to be passed to SQUFOF and trial division
+
+* Allow one to set the number of precomputed primes
+
+* solve the magma modular reduction mod sparse p problem and write faster version of mpz_mod_ui
+
+* classical and karatsuba square functions
+
+* Rewrite test code for fmpz_poly to generate random polys of fmpz type instead of mpz type
+
+* Make scalar_div_ui round appropriately
+
+* Write a 32 bit div function in long_extras.c
+
+* Make _fmpz_poly_scalar_div_ui use precomputed inverses when bitlength is long as well as the case already implemented when the poly length is long
+
+* Make zmod_poly_derivative use z_mulmod_precomp instead of z_mulmod2_precomp where appropriate
+
+* Use precomputed inverses in modulo arithmetic section in zmod_poly
+
+* See if there is a way of using the special form of pol^p to make zmod_poly_powmod faster
+
+* Implement negative powers in zmod_poly_powmod
+
+* See if there are any special cases zmod_poly_factor_square_free can recognise easily, e.g. x^2 or degree 2 polynomials
+
+* try implementing back substitution instead of Gauss-Jordan elimination in Berlekamp
+
+* First column of Berlekamp matrix is always zero - don't reduce it
+
+* Try Pari's trick of finding other random polys and taking gcds with all factors found so far, in Berlekamp, to save recursing Berlekamp (maybe it is possible to derive the Berlekamp basis of the factors from that of the whole poly?)
+
+* Add code for finding trivial polynomial factorisations, e.g. of differences of squares, powers of x, binomials, etc.
+
+* Asymptotically fast matrix nullspace code to speed up Berlekamp
+
+* Make random generator in test code seed generator from time and print seed
+
+* Add test code for all new primality test functions added over the summer (some of the tests currently do only trivial tests)
+
+* Speed up zmod_poly_powpowmod (not a typo) by using an fmpz for the power of a power and using the repeated squaring trick right the way up to the full exponent. Check to see if there are any special cases where it can bail out early in zmod_poly_isirreducible. 
+
+* Ensure pocklington test code doesn't fail on account of Carmichael numbers. 
+
+* Replace z_isprime with unconditional test up to 10^16 as currently implemented plus Pocklington test for larger numbers.
+
+* Speed up Lucas pseudoprime test for numbers less than 2^52 on 64 bit machine by using z_mod_precomp and z_mulmod_precomp instead of mod2 and mulmod2 versions.
+
+* Write z_isprobable_prime using unconditional test up to some tuned limit, followed by 2-SPRP and Lucas.
+
+FLINT 1.1
+=========
+
+put bound parameter into divides_modular
+rename bit/byte/limb_pack_1/16 functions correctly
+make proper tuned zmod_poly_gcd wrapper
+get rid of bit/byte/limb_pack into ZmodF_poly (careful, see ticket related to this)
+half_gcd for resultant and xgcd and gcd_invert
+propagate new division tricks, etc to other fmpz_poly_gcd functions
+check that bound is being used correctly in heuristic gcd to give proven result
+make new import/export word packing code work as byte packing code for various sized coefficients
+write proper heuristic style divides function and tune the various divides schemes
+write heuristic divrem and div function and tune wrappers to use it (also quasidiv?)
+tune fmpz_poly_gcd
+clean up interface for new functions
+do documentation for new functions
+write all necessary test functions
+check aliasing
+valgrind
+memory manager needs to be made thread safe
+F_mpz allocation of mpz's needs to be made threadsafe
+multimodular poly multn needs to be made thread safe
+powering bug as reported in trac
+make check should run all tests
+add test code for HOLF factoring function and tinyQS factoring function in long_extras.c
+
+FLINT 2.0
+=========
+
+use FFT precaching in F_mpz_poly_scalar_mul
+F_mpz_mul2 rename
+test code for F_mpz_poly_interleave*
+test code for F_mpz_poly_bit_unpack2
+pass number of bits to F_mpz_poly_KS
+comment and developer document bit unpacking/packing code and KS2 and interleave*
+Cite David Harvey's paper on KS2 and KS4 on the website and in documentation
